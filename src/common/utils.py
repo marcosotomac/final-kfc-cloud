@@ -1,6 +1,9 @@
 import json
 import os
 import time
+import hmac
+import hashlib
+import base64
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -110,8 +113,32 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
+def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
+    salt_bytes = salt or os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt_bytes, 200_000)
+    return base64.b64encode(salt_bytes).decode(), base64.b64encode(digest).decode()
+
+
+def verify_password(password: str, salt_b64: str, hash_b64: str) -> bool:
+    salt = base64.b64decode(salt_b64.encode())
+    expected = base64.b64decode(hash_b64.encode())
+    test = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
+    return hmac.compare_digest(expected, test)
+
+
+def sign_token(payload: dict, secret: str) -> str:
+    """
+    Minimal JWT-like token (not standard JWT) using HMAC-SHA256.
+    """
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(b"=")
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=")
+    signing_input = header + b"." + body
+    signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+    sig = base64.urlsafe_b64encode(signature).rstrip(b"=")
+    return b".".join([header, body, sig]).decode()
+
+
 class ConnectionGone(Exception):
     def __init__(self, connection_id: str):
         super().__init__(f"connection {connection_id} is gone")
         self.connection_id = connection_id
-

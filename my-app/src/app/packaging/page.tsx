@@ -15,18 +15,7 @@ function PackagingContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleWebSocketMessage = useCallback((data: any) => {
-    console.log("WebSocket message received:", data);
-    loadOrders();
-  }, []);
-
-  const { isConnected } = useWebSocket({
-    tenantId,
-    role: "packaging",
-    onMessage: handleWebSocketMessage,
-  });
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     if (!tenantId) return;
 
     setLoading(true);
@@ -40,7 +29,17 @@ function PackagingContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId]);
+
+  const handleWebSocketMessage = useCallback(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  const { isConnected } = useWebSocket({
+    tenantId,
+    role: "packaging",
+    onMessage: handleWebSocketMessage,
+  });
 
   const completeOrder = async (orderId: string) => {
     if (!tenantId) return;
@@ -60,7 +59,7 @@ function PackagingContent() {
     if (tenantId) {
       loadOrders();
     }
-  }, [tenantId]);
+  }, [tenantId, loadOrders]);
 
   if (!tenantId) {
     return (

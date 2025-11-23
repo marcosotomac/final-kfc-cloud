@@ -34,6 +34,8 @@ provider:
     TENANTS_TABLE: ${self:custom.tenantsTableName}
     ORDERS_TABLE: ${self:custom.ordersTableName}
     CONNECTIONS_TABLE: ${self:custom.connectionsTableName}
+    USERS_TABLE: ${self:custom.usersTableName}
+    PRODUCTS_TABLE: ${self:custom.productsTableName}
     MEDIA_BUCKET_NAME: ${self:custom.mediaBucketName}
     EVENT_BUS_NAME: ${self:custom.eventBusName}
     NOTIFICATIONS_TOPIC_ARN:
@@ -152,6 +154,38 @@ functions:
           arn:
             Fn::GetAtt: [DeliveryQueue, Arn]
           batchSize: 1
+  createProduct:
+    handler: src/handlers/products/create_product.handler
+    description: Alta de productos por tenant.
+    timeout: 10
+    events:
+      - httpApi:
+          method: post
+          path: /tenants/{tenantId}/products
+  listProducts:
+    handler: src/handlers/products/list_products.handler
+    description: Lista productos de un tenant.
+    timeout: 10
+    events:
+      - httpApi:
+          method: get
+          path: /tenants/{tenantId}/products
+  registerUser:
+    handler: src/handlers/auth/register_user.handler
+    description: Registro de usuario para tenant.
+    timeout: 10
+    events:
+      - httpApi:
+          method: post
+          path: /tenants/{tenantId}/auth/register
+  login:
+    handler: src/handlers/auth/login.handler
+    description: Login simple para tenant.
+    timeout: 10
+    events:
+      - httpApi:
+          method: post
+          path: /tenants/{tenantId}/auth/login
   completeStage:
     handler: src/handlers/orders/complete_stage.handler
     description: Marca una etapa del workflow como completada y responde a Step Functions.
@@ -175,6 +209,8 @@ custom:
   tenantsTableName: ${self:service}-tenants-${sls:stage}-${self:custom.nameSuffix}
   ordersTableName: ${self:service}-orders-${sls:stage}-${self:custom.nameSuffix}
   connectionsTableName: ${self:service}-connections-${sls:stage}-${self:custom.nameSuffix}
+  usersTableName: ${self:service}-users-${sls:stage}-${self:custom.nameSuffix}
+  productsTableName: ${self:service}-products-${sls:stage}-${self:custom.nameSuffix}
   mediaBucketName: ${self:service}-media-${sls:stage}-${self:custom.nameSuffix}
   eventBusName: ${self:service}-bus-${sls:stage}-${self:custom.nameSuffix}
 
@@ -254,6 +290,47 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: true
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.usersTableName}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: tenantId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenantId
+            KeyType: HASH
+          - AttributeName: userId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: tenant-email-index
+            KeySchema:
+              - AttributeName: tenantId
+                KeyType: HASH
+              - AttributeName: email
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+    ProductsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.productsTableName}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: tenantId
+            AttributeType: S
+          - AttributeName: productId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenantId
+            KeyType: HASH
+          - AttributeName: productId
+            KeyType: RANGE
     MediaBucket:
       Type: AWS::S3::Bucket
       Properties:

@@ -31,6 +31,19 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
+              href={`/customer?tenantId=${tenantId}`}
+              className={`flex items-center justify-center gap-3 p-6 rounded-xl transition-all ${
+                tenantId
+                  ? 'bg-white border-2 border-red-300 hover:border-red-400 text-red-700 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              onClick={(e) => !tenantId && e.preventDefault()}
+            >
+              <span className="text-2xl">🛒</span>
+              <span className="font-semibold">Cliente / Pedidos</span>
+            </Link>
+
+            <Link
               href={`/admin?tenantId=${tenantId}`}
               className={`flex items-center justify-center gap-3 p-6 rounded-xl transition-all ${
                 tenantId

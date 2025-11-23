@@ -8,7 +8,7 @@ interface UseWebSocketProps {
   tenantId: string;
   role: UserRole;
   userId?: string;
-  onMessage?: (data: any) => void;
+  onMessage?: (data: unknown) => void;
 }
 
 export const useWebSocket = ({
@@ -18,12 +18,12 @@ export const useWebSocket = ({
   onMessage,
 }: UseWebSocketProps) => {
   const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState<any>(null);
+  const [lastMessage, setLastMessage] = useState<unknown>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | undefined>();
   const pingIntervalRef = useRef<NodeJS.Timeout | undefined>();
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function connectSocket() {
     // Don't connect if no tenantId
     if (!tenantId) {
       console.log("WebSocket: No tenantId provided, skipping connection");
@@ -91,7 +91,7 @@ export const useWebSocket = ({
         if (tenantId) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log("WebSocket: Attempting to reconnect...");
-            connect();
+            connectSocket();
           }, 3000);
         }
       };
@@ -100,7 +100,7 @@ export const useWebSocket = ({
     } catch (error) {
       console.error("WebSocket: Error creating connection:", error);
     }
-  }, [tenantId, role, onMessage]);
+  }, [tenantId, role, userId, onMessage]);
 
   const disconnect = useCallback(() => {
     if (pingIntervalRef.current) {

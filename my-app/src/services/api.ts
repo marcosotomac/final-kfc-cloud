@@ -58,9 +58,12 @@ export const apiService = {
       ? `${API_CONFIG.endpoints.listOrders(tenantId)}?status=${status}`
       : API_CONFIG.endpoints.listOrders(tenantId);
 
-    const result = await fetchAPI<any>(endpoint, { method: "GET" });
-    if (Array.isArray(result)) return result as Order[];
-    if (Array.isArray(result?.items)) return result.items as Order[];
+    type OrdersResponse = Order[] | { items: Order[] };
+    const result = await fetchAPI<OrdersResponse>(endpoint, { method: "GET" });
+    if (Array.isArray(result)) return result;
+    if (Array.isArray((result as { items?: Order[] }).items)) {
+      return (result as { items: Order[] }).items;
+    }
     throw new Error("Respuesta inválida del servidor");
   },
 

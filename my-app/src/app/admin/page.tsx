@@ -18,19 +18,7 @@ function AdminContent() {
   const [customerName, setCustomerName] = useState("");
   const [items, setItems] = useState<OrderItem[]>([{ name: "", quantity: 1 }]);
 
-  const handleWebSocketMessage = useCallback((data: any) => {
-    console.log("WebSocket message received:", data);
-    // Refresh orders when we receive an update
-    loadOrders();
-  }, []);
-
-  const { isConnected } = useWebSocket({
-    tenantId,
-    role: "admin",
-    onMessage: handleWebSocketMessage,
-  });
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     if (!tenantId) return;
 
     setLoading(true);
@@ -44,13 +32,24 @@ function AdminContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId]);
+
+  const handleWebSocketMessage = useCallback(() => {
+    // Refresh orders when we receive an update
+    loadOrders();
+  }, [loadOrders]);
+
+  const { isConnected } = useWebSocket({
+    tenantId,
+    role: "admin",
+    onMessage: handleWebSocketMessage,
+  });
 
   useEffect(() => {
     if (tenantId) {
       loadOrders();
     }
-  }, [tenantId]);
+  }, [tenantId, loadOrders]);
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();

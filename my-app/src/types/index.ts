@@ -54,11 +54,11 @@ export interface OrderHistoryEntry {
   details?: string;
 }
 
-export type UserRole = "admin" | "kitchen" | "packaging" | "delivery";
+export type UserRole = "admin" | "kitchen" | "packaging" | "delivery" | "customer";
 
 export interface WebSocketMessage {
   action: string;
   tenantId?: string;
   role?: UserRole;
-  data?: any;
+  data?: unknown;
 }
