@@ -101,7 +101,7 @@ functions:
           eventBus:
             Fn::GetAtt:
               - OrdersEventBus
-              - Arn
+              - Name
           pattern:
             source:
               - kfc.orders
