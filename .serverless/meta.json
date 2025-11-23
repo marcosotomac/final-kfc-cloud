@@ -1,0 +1,609 @@
+{
+  "/Users/marcosotomaceda/Desktop/kfc-last/serverless.yml": {
+    "versionFramework": "4.25.0",
+    "servicePath": "/Users/marcosotomaceda/Desktop/kfc-last/serverless.yml",
+    "serviceConfigFileName": "serverless.yml",
+    "service": {
+      "org": "marcosotomac",
+      "service": "kfc-orders-cloud",
+      "provider": {
+        "name": "aws",
+        "stage": "${opt:stage, 'dev'}",
+        "region": "us-east-1",
+        "runtime": "python3.11",
+        "memorySize": 1024,
+        "timeout": 30,
+        "websocketsApiName": "${self:service}-ws-${sls:stage}",
+        "websocketsApiRouteSelectionExpression": "$request.body.action",
+        "httpApi": {
+          "cors": {
+            "allowedOrigins": [
+              "*"
+            ],
+            "allowedHeaders": [
+              "Content-Type",
+              "Authorization",
+              "X-Requested-With",
+              "x-tenant-id",
+              "x-user-id",
+              "x-role"
+            ],
+            "allowedMethods": [
+              "OPTIONS",
+              "GET",
+              "POST",
+              "PATCH",
+              "PUT",
+              "DELETE"
+            ],
+            "maxAge": 300
+          }
+        },
+        "environment": {
+          "TENANTS_TABLE": "${self:custom.tenantsTableName}",
+          "ORDERS_TABLE": "${self:custom.ordersTableName}",
+          "CONNECTIONS_TABLE": "${self:custom.connectionsTableName}",
+          "MEDIA_BUCKET_NAME": "${self:custom.mediaBucketName}",
+          "EVENT_BUS_NAME": "${self:custom.eventBusName}",
+          "NOTIFICATIONS_TOPIC_ARN": {
+            "Ref": "OrderNotificationsTopic"
+          },
+          "ORDER_WORKFLOW_ARN": {
+            "Ref": "OrderWorkflow"
+          },
+          "KITCHEN_QUEUE_URL": {
+            "Ref": "KitchenQueue"
+          },
+          "PACKAGING_QUEUE_URL": {
+            "Ref": "PackagingQueue"
+          },
+          "DELIVERY_QUEUE_URL": {
+            "Ref": "DeliveryQueue"
+          },
+          "CONNECTION_TTL_SECONDS": "${opt:connectionTtl, env:CONNECTION_TTL_SECONDS, '3600'}",
+          "WEBSOCKET_API_ENDPOINT": {
+            "Fn::Join": [
+              "",
+              [
+                "https://",
+                {
+                  "Ref": "WebsocketsApi"
+                },
+                ".execute-api.",
+                "${self:provider.region}",
+                ".amazonaws.com/",
+                "${self:provider.stage}"
+              ]
+            ]
+          }
+        },
+        "iam": {
+          "role": "arn:aws:iam::814612244228:role/LabRole"
+        }
+      },
+      "plugins": [
+        "serverless-python-requirements"
+      ],
+      "functions": {
+        "registerTenant": {
+          "handler": "src/handlers/tenants/register.handler",
+          "description": "Alta de tenants (franquicias KFC) para el esquema multi-tenant.",
+          "timeout": 10,
+          "events": [
+            {
+              "httpApi": {
+                "method": "post",
+                "path": "/tenants"
+              }
+            }
+          ]
+        },
+        "createOrder": {
+          "handler": "src/handlers/orders/create_order.handler",
+          "description": "Crea un pedido y dispara eventos al bus para iniciar el workflow.",
+          "timeout": 15,
+          "events": [
+            {
+              "httpApi": {
+                "method": "post",
+                "path": "/tenants/{tenantId}/orders"
+              }
+            }
+          ]
+        },
+        "listOrders": {
+          "handler": "src/handlers/orders/list_orders.handler",
+          "description": "Lista pedidos por tenant con filtro opcional por estado.",
+          "timeout": 15,
+          "events": [
+            {
+              "httpApi": {
+                "method": "get",
+                "path": "/tenants/{tenantId}/orders"
+              }
+            }
+          ]
+        },
+        "getOrder": {
+          "handler": "src/handlers/orders/get_order.handler",
+          "description": "Devuelve el estado y trazabilidad de un pedido específico.",
+          "timeout": 10,
+          "events": [
+            {
+              "httpApi": {
+                "method": "get",
+                "path": "/tenants/{tenantId}/orders/{orderId}"
+              }
+            }
+          ]
+        },
+        "orderEventsRouter": {
+          "handler": "src/handlers/events/router.handler",
+          "description": "Empuja eventos del bus a WebSockets y SNS.",
+          "timeout": 10,
+          "events": [
+            {
+              "eventBridge": {
+                "eventBus": "${self:custom.eventBusName}",
+                "pattern": {
+                  "source": [
+                    "kfc.orders"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "wsConnect": {
+          "handler": "src/handlers/ws/connect.handler",
+          "description": "Registra conexiones WebSocket asociadas a un tenant y rol.",
+          "events": [
+            {
+              "websocket": "$connect"
+            }
+          ]
+        },
+        "wsDisconnect": {
+          "handler": "src/handlers/ws/disconnect.handler",
+          "description": "Limpia conexiones WebSocket al desconectar.",
+          "events": [
+            {
+              "websocket": "$disconnect"
+            }
+          ]
+        },
+        "wsDefault": {
+          "handler": "src/handlers/ws/default.handler",
+          "description": "Maneja mensajes no soportados.",
+          "events": [
+            {
+              "websocket": "$default"
+            }
+          ]
+        },
+        "wsPing": {
+          "handler": "src/handlers/ws/ping.handler",
+          "description": "Renueva TTL de conexiones activas.",
+          "events": [
+            {
+              "websocket": "ping"
+            }
+          ]
+        },
+        "kitchenWorker": {
+          "handler": "src/handlers/workflow/kitchen_worker.handler",
+          "description": "Microservicio cocina - toma pedidos desde SQS y responde a Step Functions.",
+          "timeout": 30,
+          "events": [
+            {
+              "sqs": {
+                "arn": {
+                  "Fn::GetAtt": [
+                    "KitchenQueue",
+                    "Arn"
+                  ]
+                },
+                "batchSize": 1
+              }
+            }
+          ]
+        },
+        "packagingWorker": {
+          "handler": "src/handlers/workflow/packaging_worker.handler",
+          "description": "Microservicio empaque - procesa pedidos preparados.",
+          "timeout": 30,
+          "events": [
+            {
+              "sqs": {
+                "arn": {
+                  "Fn::GetAtt": [
+                    "PackagingQueue",
+                    "Arn"
+                  ]
+                },
+                "batchSize": 1
+              }
+            }
+          ]
+        },
+        "deliveryWorker": {
+          "handler": "src/handlers/workflow/delivery_worker.handler",
+          "description": "Microservicio delivery - marca pedidos como entregados.",
+          "timeout": 30,
+          "events": [
+            {
+              "sqs": {
+                "arn": {
+                  "Fn::GetAtt": [
+                    "DeliveryQueue",
+                    "Arn"
+                  ]
+                },
+                "batchSize": 1
+              }
+            }
+          ]
+        }
+      },
+      "package": {
+        "patterns": [
+          "!node_modules/**",
+          "!venv/**",
+          "!front-hack-cloud/**",
+          "!.git/**",
+          "!*.pdf"
+        ]
+      },
+      "custom": {
+        "pythonRequirements": {
+          "dockerizePip": false,
+          "layer": false,
+          "slim": true,
+          "strip": false,
+          "zip": true,
+          "pythonBin": "python3.11"
+        },
+        "tenantsTableName": "${self:service}-tenants-${sls:stage}",
+        "ordersTableName": "${self:service}-orders-${sls:stage}",
+        "connectionsTableName": "${self:service}-connections-${sls:stage}",
+        "mediaBucketName": "${self:service}-media-${sls:stage}",
+        "eventBusName": "${self:service}-bus-${sls:stage}"
+      },
+      "resources": {
+        "Resources": {
+          "TenantsTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+              "TableName": "${self:custom.tenantsTableName}",
+              "BillingMode": "PAY_PER_REQUEST",
+              "AttributeDefinitions": [
+                {
+                  "AttributeName": "tenantId",
+                  "AttributeType": "S"
+                }
+              ],
+              "KeySchema": [
+                {
+                  "AttributeName": "tenantId",
+                  "KeyType": "HASH"
+                }
+              ]
+            }
+          },
+          "OrdersTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+              "TableName": "${self:custom.ordersTableName}",
+              "BillingMode": "PAY_PER_REQUEST",
+              "AttributeDefinitions": [
+                {
+                  "AttributeName": "tenantId",
+                  "AttributeType": "S"
+                },
+                {
+                  "AttributeName": "orderId",
+                  "AttributeType": "S"
+                },
+                {
+                  "AttributeName": "status",
+                  "AttributeType": "S"
+                }
+              ],
+              "KeySchema": [
+                {
+                  "AttributeName": "tenantId",
+                  "KeyType": "HASH"
+                },
+                {
+                  "AttributeName": "orderId",
+                  "KeyType": "RANGE"
+                }
+              ],
+              "GlobalSecondaryIndexes": [
+                {
+                  "IndexName": "status-index",
+                  "KeySchema": [
+                    {
+                      "AttributeName": "tenantId",
+                      "KeyType": "HASH"
+                    },
+                    {
+                      "AttributeName": "status",
+                      "KeyType": "RANGE"
+                    }
+                  ],
+                  "Projection": {
+                    "ProjectionType": "ALL"
+                  }
+                }
+              ]
+            }
+          },
+          "ConnectionsTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+              "TableName": "${self:custom.connectionsTableName}",
+              "BillingMode": "PAY_PER_REQUEST",
+              "AttributeDefinitions": [
+                {
+                  "AttributeName": "tenantId",
+                  "AttributeType": "S"
+                },
+                {
+                  "AttributeName": "connectionId",
+                  "AttributeType": "S"
+                },
+                {
+                  "AttributeName": "role",
+                  "AttributeType": "S"
+                }
+              ],
+              "KeySchema": [
+                {
+                  "AttributeName": "tenantId",
+                  "KeyType": "HASH"
+                },
+                {
+                  "AttributeName": "connectionId",
+                  "KeyType": "RANGE"
+                }
+              ],
+              "GlobalSecondaryIndexes": [
+                {
+                  "IndexName": "tenant-role-index",
+                  "KeySchema": [
+                    {
+                      "AttributeName": "tenantId",
+                      "KeyType": "HASH"
+                    },
+                    {
+                      "AttributeName": "role",
+                      "KeyType": "RANGE"
+                    }
+                  ],
+                  "Projection": {
+                    "ProjectionType": "ALL"
+                  }
+                },
+                {
+                  "IndexName": "connection-index",
+                  "KeySchema": [
+                    {
+                      "AttributeName": "connectionId",
+                      "KeyType": "HASH"
+                    },
+                    {
+                      "AttributeName": "tenantId",
+                      "KeyType": "RANGE"
+                    }
+                  ],
+                  "Projection": {
+                    "ProjectionType": "ALL"
+                  }
+                }
+              ],
+              "TimeToLiveSpecification": {
+                "AttributeName": "expiresAt",
+                "Enabled": true
+              }
+            }
+          },
+          "MediaBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+              "BucketName": "${self:custom.mediaBucketName}",
+              "CorsConfiguration": {
+                "CorsRules": [
+                  {
+                    "AllowedHeaders": [
+                      "*"
+                    ],
+                    "AllowedMethods": [
+                      "GET",
+                      "PUT",
+                      "POST",
+                      "DELETE",
+                      "HEAD"
+                    ],
+                    "AllowedOrigins": [
+                      "*"
+                    ],
+                    "MaxAge": 3000
+                  }
+                ]
+              },
+              "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": true,
+                "BlockPublicPolicy": true,
+                "IgnorePublicAcls": true,
+                "RestrictPublicBuckets": true
+              }
+            }
+          },
+          "OrdersEventBus": {
+            "Type": "AWS::Events::EventBus",
+            "Properties": {
+              "Name": "${self:custom.eventBusName}"
+            }
+          },
+          "OrderNotificationsTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+              "TopicName": "${self:service}-notifications-${sls:stage}"
+            }
+          },
+          "KitchenQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "${self:service}-kitchen-${sls:stage}",
+              "VisibilityTimeout": 120
+            }
+          },
+          "PackagingQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "${self:service}-packaging-${sls:stage}",
+              "VisibilityTimeout": 120
+            }
+          },
+          "DeliveryQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "${self:service}-delivery-${sls:stage}",
+              "VisibilityTimeout": 120
+            }
+          },
+          "OrderWorkflow": {
+            "Type": "AWS::StepFunctions::StateMachine",
+            "Properties": {
+              "StateMachineName": "${self:service}-workflow-${sls:stage}",
+              "RoleArn": "arn:aws:iam::814612244228:role/LabRole",
+              "DefinitionString": {
+                "Fn::Sub": "{\n  \"StartAt\": \"SendToKitchen\",\n  \"States\": {\n    \"SendToKitchen\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n      \"Parameters\": {\n        \"QueueUrl\": \"${KitchenQueue}\",\n        \"MessageBody\": {\n          \"taskToken.$\": \"$$.Task.Token\",\n          \"orderId.$\": \"$.orderId\",\n          \"tenantId.$\": \"$.tenantId\",\n          \"stage\": \"kitchen\"\n        }\n      },\n      \"Next\": \"SendToPackaging\"\n    },\n    \"SendToPackaging\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n      \"Parameters\": {\n        \"QueueUrl\": \"${PackagingQueue}\",\n        \"MessageBody\": {\n          \"taskToken.$\": \"$$.Task.Token\",\n          \"orderId.$\": \"$.orderId\",\n          \"tenantId.$\": \"$.tenantId\",\n          \"stage\": \"packaging\"\n        }\n      },\n      \"Next\": \"SendToDelivery\"\n    },\n    \"SendToDelivery\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n      \"Parameters\": {\n        \"QueueUrl\": \"${DeliveryQueue}\",\n        \"MessageBody\": {\n          \"taskToken.$\": \"$$.Task.Token\",\n          \"orderId.$\": \"$.orderId\",\n          \"tenantId.$\": \"$.tenantId\",\n          \"stage\": \"delivery\"\n        }\n      },\n      \"End\": true\n    }\n  }\n}\n"
+              }
+            }
+          },
+          "StartWorkflowRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+              "Name": "${self:service}-start-workflow-${sls:stage}",
+              "EventBusName": {
+                "Ref": "OrdersEventBus"
+              },
+              "EventPattern": {
+                "detail-type": [
+                  "order.created"
+                ]
+              },
+              "Targets": [
+                {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "OrderWorkflow",
+                      "Arn"
+                    ]
+                  },
+                  "Id": "StartOrderWorkflow",
+                  "RoleArn": "arn:aws:iam::814612244228:role/LabRole",
+                  "InputPath": "$.detail"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "provider": {
+      "name": "aws",
+      "stage": "${opt:stage, 'dev'}",
+      "region": "us-east-1",
+      "runtime": "python3.11",
+      "memorySize": 1024,
+      "timeout": 30,
+      "websocketsApiName": "${self:service}-ws-${sls:stage}",
+      "websocketsApiRouteSelectionExpression": "$request.body.action",
+      "httpApi": {
+        "cors": {
+          "allowedOrigins": [
+            "*"
+          ],
+          "allowedHeaders": [
+            "Content-Type",
+            "Authorization",
+            "X-Requested-With",
+            "x-tenant-id",
+            "x-user-id",
+            "x-role"
+          ],
+          "allowedMethods": [
+            "OPTIONS",
+            "GET",
+            "POST",
+            "PATCH",
+            "PUT",
+            "DELETE"
+          ],
+          "maxAge": 300
+        }
+      },
+      "environment": {
+        "TENANTS_TABLE": "${self:custom.tenantsTableName}",
+        "ORDERS_TABLE": "${self:custom.ordersTableName}",
+        "CONNECTIONS_TABLE": "${self:custom.connectionsTableName}",
+        "MEDIA_BUCKET_NAME": "${self:custom.mediaBucketName}",
+        "EVENT_BUS_NAME": "${self:custom.eventBusName}",
+        "NOTIFICATIONS_TOPIC_ARN": {
+          "Ref": "OrderNotificationsTopic"
+        },
+        "ORDER_WORKFLOW_ARN": {
+          "Ref": "OrderWorkflow"
+        },
+        "KITCHEN_QUEUE_URL": {
+          "Ref": "KitchenQueue"
+        },
+        "PACKAGING_QUEUE_URL": {
+          "Ref": "PackagingQueue"
+        },
+        "DELIVERY_QUEUE_URL": {
+          "Ref": "DeliveryQueue"
+        },
+        "CONNECTION_TTL_SECONDS": "${opt:connectionTtl, env:CONNECTION_TTL_SECONDS, '3600'}",
+        "WEBSOCKET_API_ENDPOINT": {
+          "Fn::Join": [
+            "",
+            [
+              "https://",
+              {
+                "Ref": "WebsocketsApi"
+              },
+              ".execute-api.",
+              "${self:provider.region}",
+              ".amazonaws.com/",
+              "${self:provider.stage}"
+            ]
+          ]
+        }
+      },
+      "iam": {
+        "role": "arn:aws:iam::814612244228:role/LabRole"
+      }
+    },
+    "error": {
+      "message": "You must sign in or use a license key with Serverless Framework V.4 and later versions. Please use \"serverless login\".",
+      "stack": "Error: You must sign in or use a license key with Serverless Framework V.4 and later versions. Please use \"serverless login\".\n    at Authentication.getAuthenticatedData (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:720:11184)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Authentication.authenticate (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:723:4103)\n    at async TraditionalRunner.resolveVariablesAndAuthenticate (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:732:1380)\n    at async TraditionalRunner.run (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:1380:27992)\n    at async route (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:1555:2878)\n    at async Object.run (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:1556:3845)\n    at async run2 (file:///Users/marcosotomaceda/.serverless/releases/4.25.0/package/dist/sf-core.js:1556:4999)"
+    },
+    "serviceRawFile": "org: marcosotomac\nservice: kfc-orders-cloud\n\nprovider:\n  name: aws\n  stage: ${opt:stage, 'dev'}\n  region: us-east-1\n  runtime: python3.11\n  memorySize: 1024\n  timeout: 30\n  websocketsApiName: ${self:service}-ws-${sls:stage}\n  websocketsApiRouteSelectionExpression: $request.body.action\n  httpApi:\n    cors:\n      allowedOrigins:\n        - \"*\"\n      allowedHeaders:\n        - Content-Type\n        - Authorization\n        - X-Requested-With\n        - x-tenant-id\n        - x-user-id\n        - x-role\n      allowedMethods:\n        - OPTIONS\n        - GET\n        - POST\n        - PATCH\n        - PUT\n        - DELETE\n      maxAge: 300\n  environment:\n    TENANTS_TABLE: ${self:custom.tenantsTableName}\n    ORDERS_TABLE: ${self:custom.ordersTableName}\n    CONNECTIONS_TABLE: ${self:custom.connectionsTableName}\n    MEDIA_BUCKET_NAME: ${self:custom.mediaBucketName}\n    EVENT_BUS_NAME: ${self:custom.eventBusName}\n    NOTIFICATIONS_TOPIC_ARN:\n      Ref: OrderNotificationsTopic\n    ORDER_WORKFLOW_ARN:\n      Ref: OrderWorkflow\n    KITCHEN_QUEUE_URL:\n      Ref: KitchenQueue\n    PACKAGING_QUEUE_URL:\n      Ref: PackagingQueue\n    DELIVERY_QUEUE_URL:\n      Ref: DeliveryQueue\n    CONNECTION_TTL_SECONDS: ${opt:connectionTtl, env:CONNECTION_TTL_SECONDS, '3600'}\n    WEBSOCKET_API_ENDPOINT:\n      Fn::Join:\n        - \"\"\n        - - \"https://\"\n          - Ref: WebsocketsApi\n          - \".execute-api.\"\n          - ${self:provider.region}\n          - \".amazonaws.com/\"\n          - ${self:provider.stage}\n  iam:\n    role: arn:aws:iam::814612244228:role/LabRole\n\nplugins:\n  - serverless-python-requirements\n\nfunctions:\n  registerTenant:\n    handler: src/handlers/tenants/register.handler\n    description: Alta de tenants (franquicias KFC) para el esquema multi-tenant.\n    timeout: 10\n    events:\n      - httpApi:\n          method: post\n          path: /tenants\n  createOrder:\n    handler: src/handlers/orders/create_order.handler\n    description: Crea un pedido y dispara eventos al bus para iniciar el workflow.\n    timeout: 15\n    events:\n      - httpApi:\n          method: post\n          path: /tenants/{tenantId}/orders\n  listOrders:\n    handler: src/handlers/orders/list_orders.handler\n    description: Lista pedidos por tenant con filtro opcional por estado.\n    timeout: 15\n    events:\n      - httpApi:\n          method: get\n          path: /tenants/{tenantId}/orders\n  getOrder:\n    handler: src/handlers/orders/get_order.handler\n    description: Devuelve el estado y trazabilidad de un pedido específico.\n    timeout: 10\n    events:\n      - httpApi:\n          method: get\n          path: /tenants/{tenantId}/orders/{orderId}\n  orderEventsRouter:\n    handler: src/handlers/events/router.handler\n    description: Empuja eventos del bus a WebSockets y SNS.\n    timeout: 10\n    events:\n      - eventBridge:\n          eventBus: ${self:custom.eventBusName}\n          pattern:\n            source:\n              - kfc.orders\n  wsConnect:\n    handler: src/handlers/ws/connect.handler\n    description: Registra conexiones WebSocket asociadas a un tenant y rol.\n    events:\n      - websocket: $connect\n  wsDisconnect:\n    handler: src/handlers/ws/disconnect.handler\n    description: Limpia conexiones WebSocket al desconectar.\n    events:\n      - websocket: $disconnect\n  wsDefault:\n    handler: src/handlers/ws/default.handler\n    description: Maneja mensajes no soportados.\n    events:\n      - websocket: $default\n  wsPing:\n    handler: src/handlers/ws/ping.handler\n    description: Renueva TTL de conexiones activas.\n    events:\n      - websocket: ping\n  kitchenWorker:\n    handler: src/handlers/workflow/kitchen_worker.handler\n    description: Microservicio cocina - toma pedidos desde SQS y responde a Step Functions.\n    timeout: 30\n    events:\n      - sqs:\n          arn:\n            Fn::GetAtt: [KitchenQueue, Arn]\n          batchSize: 1\n  packagingWorker:\n    handler: src/handlers/workflow/packaging_worker.handler\n    description: Microservicio empaque - procesa pedidos preparados.\n    timeout: 30\n    events:\n      - sqs:\n          arn:\n            Fn::GetAtt: [PackagingQueue, Arn]\n          batchSize: 1\n  deliveryWorker:\n    handler: src/handlers/workflow/delivery_worker.handler\n    description: Microservicio delivery - marca pedidos como entregados.\n    timeout: 30\n    events:\n      - sqs:\n          arn:\n            Fn::GetAtt: [DeliveryQueue, Arn]\n          batchSize: 1\n\npackage:\n  patterns:\n    - \"!node_modules/**\"\n    - \"!venv/**\"\n    - \"!front-hack-cloud/**\"\n    - \"!.git/**\"\n    - \"!*.pdf\"\n\ncustom:\n  pythonRequirements:\n    dockerizePip: false\n    layer: false\n    slim: true\n    strip: false\n    zip: true\n    pythonBin: python3.11\n  tenantsTableName: ${self:service}-tenants-${sls:stage}\n  ordersTableName: ${self:service}-orders-${sls:stage}\n  connectionsTableName: ${self:service}-connections-${sls:stage}\n  mediaBucketName: ${self:service}-media-${sls:stage}\n  eventBusName: ${self:service}-bus-${sls:stage}\n\nresources:\n  Resources:\n    TenantsTable:\n      Type: AWS::DynamoDB::Table\n      Properties:\n        TableName: ${self:custom.tenantsTableName}\n        BillingMode: PAY_PER_REQUEST\n        AttributeDefinitions:\n          - AttributeName: tenantId\n            AttributeType: S\n        KeySchema:\n          - AttributeName: tenantId\n            KeyType: HASH\n    OrdersTable:\n      Type: AWS::DynamoDB::Table\n      Properties:\n        TableName: ${self:custom.ordersTableName}\n        BillingMode: PAY_PER_REQUEST\n        AttributeDefinitions:\n          - AttributeName: tenantId\n            AttributeType: S\n          - AttributeName: orderId\n            AttributeType: S\n          - AttributeName: status\n            AttributeType: S\n        KeySchema:\n          - AttributeName: tenantId\n            KeyType: HASH\n          - AttributeName: orderId\n            KeyType: RANGE\n        GlobalSecondaryIndexes:\n          - IndexName: status-index\n            KeySchema:\n              - AttributeName: tenantId\n                KeyType: HASH\n              - AttributeName: status\n                KeyType: RANGE\n            Projection:\n              ProjectionType: ALL\n    ConnectionsTable:\n      Type: AWS::DynamoDB::Table\n      Properties:\n        TableName: ${self:custom.connectionsTableName}\n        BillingMode: PAY_PER_REQUEST\n        AttributeDefinitions:\n          - AttributeName: tenantId\n            AttributeType: S\n          - AttributeName: connectionId\n            AttributeType: S\n          - AttributeName: role\n            AttributeType: S\n        KeySchema:\n          - AttributeName: tenantId\n            KeyType: HASH\n          - AttributeName: connectionId\n            KeyType: RANGE\n        GlobalSecondaryIndexes:\n          - IndexName: tenant-role-index\n            KeySchema:\n              - AttributeName: tenantId\n                KeyType: HASH\n              - AttributeName: role\n                KeyType: RANGE\n            Projection:\n              ProjectionType: ALL\n          - IndexName: connection-index\n            KeySchema:\n              - AttributeName: connectionId\n                KeyType: HASH\n              - AttributeName: tenantId\n                KeyType: RANGE\n            Projection:\n              ProjectionType: ALL\n        TimeToLiveSpecification:\n          AttributeName: expiresAt\n          Enabled: true\n    MediaBucket:\n      Type: AWS::S3::Bucket\n      Properties:\n        BucketName: ${self:custom.mediaBucketName}\n        CorsConfiguration:\n          CorsRules:\n            - AllowedHeaders: [\"*\"]\n              AllowedMethods: [\"GET\", \"PUT\", \"POST\", \"DELETE\", \"HEAD\"]\n              AllowedOrigins: [\"*\"]\n              MaxAge: 3000\n        PublicAccessBlockConfiguration:\n          BlockPublicAcls: true\n          BlockPublicPolicy: true\n          IgnorePublicAcls: true\n          RestrictPublicBuckets: true\n\n    OrdersEventBus:\n      Type: AWS::Events::EventBus\n      Properties:\n        Name: ${self:custom.eventBusName}\n\n    OrderNotificationsTopic:\n      Type: AWS::SNS::Topic\n      Properties:\n        TopicName: ${self:service}-notifications-${sls:stage}\n\n    KitchenQueue:\n      Type: AWS::SQS::Queue\n      Properties:\n        QueueName: ${self:service}-kitchen-${sls:stage}\n        VisibilityTimeout: 120\n    PackagingQueue:\n      Type: AWS::SQS::Queue\n      Properties:\n        QueueName: ${self:service}-packaging-${sls:stage}\n        VisibilityTimeout: 120\n    DeliveryQueue:\n      Type: AWS::SQS::Queue\n      Properties:\n        QueueName: ${self:service}-delivery-${sls:stage}\n        VisibilityTimeout: 120\n\n    OrderWorkflow:\n      Type: AWS::StepFunctions::StateMachine\n      Properties:\n        StateMachineName: ${self:service}-workflow-${sls:stage}\n        RoleArn: arn:aws:iam::814612244228:role/LabRole\n        DefinitionString:\n          Fn::Sub: |\n            {\n              \"StartAt\": \"SendToKitchen\",\n              \"States\": {\n                \"SendToKitchen\": {\n                  \"Type\": \"Task\",\n                  \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n                  \"Parameters\": {\n                    \"QueueUrl\": \"${KitchenQueue}\",\n                    \"MessageBody\": {\n                      \"taskToken.$\": \"$$.Task.Token\",\n                      \"orderId.$\": \"$.orderId\",\n                      \"tenantId.$\": \"$.tenantId\",\n                      \"stage\": \"kitchen\"\n                    }\n                  },\n                  \"Next\": \"SendToPackaging\"\n                },\n                \"SendToPackaging\": {\n                  \"Type\": \"Task\",\n                  \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n                  \"Parameters\": {\n                    \"QueueUrl\": \"${PackagingQueue}\",\n                    \"MessageBody\": {\n                      \"taskToken.$\": \"$$.Task.Token\",\n                      \"orderId.$\": \"$.orderId\",\n                      \"tenantId.$\": \"$.tenantId\",\n                      \"stage\": \"packaging\"\n                    }\n                  },\n                  \"Next\": \"SendToDelivery\"\n                },\n                \"SendToDelivery\": {\n                  \"Type\": \"Task\",\n                  \"Resource\": \"arn:aws:states:::sqs:sendMessage.waitForTaskToken\",\n                  \"Parameters\": {\n                    \"QueueUrl\": \"${DeliveryQueue}\",\n                    \"MessageBody\": {\n                      \"taskToken.$\": \"$$.Task.Token\",\n                      \"orderId.$\": \"$.orderId\",\n                      \"tenantId.$\": \"$.tenantId\",\n                      \"stage\": \"delivery\"\n                    }\n                  },\n                  \"End\": true\n                }\n              }\n            }\n\n    StartWorkflowRule:\n      Type: AWS::Events::Rule\n      Properties:\n        Name: ${self:service}-start-workflow-${sls:stage}\n        EventBusName: !Ref OrdersEventBus\n        EventPattern:\n          detail-type:\n            - order.created\n        Targets:\n          - Arn: !GetAtt OrderWorkflow.Arn\n            Id: StartOrderWorkflow\n            RoleArn: arn:aws:iam::814612244228:role/LabRole\n            InputPath: \"$.detail\"\n",
+    "command": [
+      "package"
+    ],
+    "options": {
+      "stage": "dev",
+      "package": "/tmp/kfc-package"
+    },
+    "serviceProviderAwsCfStackId": null,
+    "serviceProviderAwsCfStackCreated": null,
+    "serviceProviderAwsCfStackUpdated": null,
+    "serviceProviderAwsCfStackStatus": null,
+    "serviceProviderAwsCfStackOutputs": null
+  }
+}

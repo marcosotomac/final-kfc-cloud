@@ -58,9 +58,6 @@ provider:
   iam:
     role: arn:aws:iam::814612244228:role/LabRole
 
-plugins:
-  - serverless-python-requirements
-
 functions:
   registerTenant:
     handler: src/handlers/tenants/register.handler
@@ -161,12 +158,6 @@ package:
     - "!*.pdf"
 
 custom:
-  pythonRequirements:
-    dockerizePip: false
-    layer: false
-    slim: true
-    strip: false
-    zip: true
   tenantsTableName: ${self:service}-tenants-${sls:stage}
   ordersTableName: ${self:service}-orders-${sls:stage}
   connectionsTableName: ${self:service}-connections-${sls:stage}
