@@ -1,0 +1,24 @@
+{
+  "name": "kfc-last",
+  "version": "1.0.0",
+  "description": "Backend multi-tenant y event-driven para gestionar pedidos KFC usando AWS (Api Gateway HTTP + WebSockets, EventBridge, Step Functions, Lambda, DynamoDB, S3, SQS, SNS, Amplify como front host).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marcosotomac/final-kfc-cloud.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/marcosotomac/final-kfc-cloud/issues"
+  },
+  "homepage": "https://github.com/marcosotomac/final-kfc-cloud#readme",
+  "devDependencies": {
+    "serverless-python-requirements": "^6.1.2"
+  }
+}
