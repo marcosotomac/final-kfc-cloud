@@ -57,7 +57,7 @@ provider:
           - ".amazonaws.com/"
           - ${self:provider.stage}
   iam:
-    role: arn:aws:iam::595645243021:role/LabRole
+    role: arn:aws:iam::814612244228:role/LabRole
 
 functions:
   registerTenant:
@@ -98,7 +98,10 @@ functions:
     timeout: 10
     events:
       - eventBridge:
-          eventBus: ${self:custom.eventBusName}
+          eventBus:
+            Fn::GetAtt:
+              - OrdersEventBus
+              - Arn
           pattern:
             source:
               - kfc.orders
@@ -289,7 +292,7 @@ resources:
       Type: AWS::StepFunctions::StateMachine
       Properties:
         StateMachineName: ${self:service}-workflow-${sls:stage}-${self:custom.nameSuffix}
-        RoleArn: arn:aws:iam::595645243021:role/LabRole
+        RoleArn: arn:aws:iam::814612244228:role/LabRole
         DefinitionString:
           Fn::Sub: |
             {
@@ -351,5 +354,5 @@ resources:
         Targets:
           - Arn: !GetAtt OrderWorkflow.Arn
             Id: StartOrderWorkflow
-            RoleArn: arn:aws:iam::595645243021:role/LabRole
+            RoleArn: arn:aws:iam::814612244228:role/LabRole
             InputPath: "$.detail"
