@@ -6,9 +6,11 @@ export interface Tenant {
 }
 
 export interface OrderItem {
-  name: string;
+  productId?: string;
+  name?: string;
   quantity: number;
   price?: number;
+  lineTotal?: number;
 }
 
 export interface Order {
@@ -61,4 +63,20 @@ export interface WebSocketMessage {
   tenantId?: string;
   role?: UserRole;
   data?: unknown;
+}
+
+export interface Product {
+  productId: string;
+  tenantId: string;
+  name: string;
+  price: number;
+  stock: number;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: { userId: string; email: string; role?: string };
 }

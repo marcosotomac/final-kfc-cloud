@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiService } from "@/services/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { Order, OrderItem } from "@/types";
+import { Order, OrderItem, Product } from "@/types";
 
 function AdminContent() {
   const searchParams = useSearchParams();
@@ -16,7 +16,16 @@ function AdminContent() {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [customerName, setCustomerName] = useState("");
-  const [items, setItems] = useState<OrderItem[]>([{ name: "", quantity: 1 }]);
+  const [items, setItems] = useState<OrderItem[]>([
+    { productId: "", name: "", quantity: 1 },
+  ]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productForm, setProductForm] = useState({
+    name: "",
+    price: "",
+    stock: "",
+    description: "",
+  });
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
@@ -34,6 +43,16 @@ function AdminContent() {
     }
   }, [tenantId]);
 
+  const loadProducts = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const list = await apiService.listProducts(tenantId);
+      setProducts(list);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [tenantId]);
+
   const handleWebSocketMessage = useCallback(() => {
     // Refresh orders when we receive an update
     loadOrders();
@@ -48,8 +67,9 @@ function AdminContent() {
   useEffect(() => {
     if (tenantId) {
       loadOrders();
+      loadProducts();
     }
-  }, [tenantId, loadOrders]);
+  }, [tenantId, loadOrders, loadProducts]);
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,16 +80,20 @@ function AdminContent() {
 
     try {
       const validItems = items.filter(
-        (item) => item.name.trim() && item.quantity > 0
+        (item) => item.productId && item.quantity > 0
       );
       await apiService.createOrder(tenantId, {
-        items: validItems,
+        items: validItems.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          name: i.name,
+        })),
         customerName: customerName || undefined,
       });
 
       setShowForm(false);
       setCustomerName("");
-      setItems([{ name: "", quantity: 1 }]);
+      setItems([{ productId: "", name: "", quantity: 1 }]);
       await loadOrders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear pedido");
@@ -79,7 +103,7 @@ function AdminContent() {
   };
 
   const addItem = () => {
-    setItems([...items, { name: "", quantity: 1 }]);
+    setItems([...items, { productId: "", name: "", quantity: 1 }]);
   };
 
   const removeItem = (index: number) => {
@@ -92,8 +116,34 @@ function AdminContent() {
     value: string | number
   ) => {
     const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    let patch: Partial<OrderItem> = { [field]: value } as Partial<OrderItem>;
+    if (field === "productId") {
+      const selected = products.find((p) => p.productId === value);
+      patch = { ...patch, name: selected?.name || "" };
+    }
+    newItems[index] = { ...newItems[index], ...patch };
     setItems(newItems);
+  };
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenantId) return;
+    setLoading(true);
+    setError("");
+    try {
+      await apiService.createProduct(tenantId, {
+        name: productForm.name,
+        price: Number(productForm.price),
+        stock: Number(productForm.stock),
+        description: productForm.description || undefined,
+      });
+      setProductForm({ name: "", price: "", stock: "", description: "" });
+      await loadProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al crear producto");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -170,6 +220,75 @@ function AdminContent() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-6xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-gray-800">Productos</h2>
+          </div>
+
+          <form onSubmit={handleCreateProduct} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Nombre"
+              value={productForm.name}
+              onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              required
+            />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Precio"
+              value={productForm.price}
+              onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              required
+            />
+            <input
+              type="number"
+              min="0"
+              placeholder="Stock"
+              value={productForm.stock}
+              onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              required
+            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Descripción (opcional)"
+                value={productForm.description}
+                onChange={(e) =>
+                  setProductForm({ ...productForm, description: e.target.value })
+                }
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+              >
+                {loading ? "..." : "Crear"}
+              </button>
+            </div>
+          </form>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {products.map((p) => (
+              <div key={p.productId} className="border border-gray-200 rounded-lg p-3">
+                <p className="font-semibold text-gray-800">{p.name}</p>
+                <p className="text-sm text-gray-600">${p.price} · Stock: {p.stock}</p>
+                {p.description && (
+                  <p className="text-xs text-gray-500 mt-1">{p.description}</p>
+                )}
+              </div>
+            ))}
+            {products.length === 0 && (
+              <p className="text-sm text-gray-500">No hay productos aún.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-800 mb-2">
@@ -235,16 +354,21 @@ function AdminContent() {
                 </label>
                 {items.map((item, index) => (
                   <div key={index} className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={item.name}
+                    <select
+                      value={item.productId || ""}
                       onChange={(e) =>
-                        updateItem(index, "name", e.target.value)
+                        updateItem(index, "productId", e.target.value)
                       }
-                      placeholder="Producto"
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-900"
                       required
-                    />
+                    >
+                      <option value="">Seleccione producto</option>
+                      {products.map((p) => (
+                        <option key={p.productId} value={p.productId} disabled={p.stock <= 0}>
+                          {p.name} - ${p.price} ({p.stock} disp.)
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="number"
                       min="1"
@@ -288,29 +412,29 @@ function AdminContent() {
           <button
             onClick={loadOrders}
             disabled={loading}
-            className="mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+            className="mb-4 px-4 py-2 bg-blue-600 text-black rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
           >
             {loading ? "Cargando..." : "🔄 Actualizar"}
           </button>
 
           <div className="space-y-4">
             {orders.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-black-500 text-center py-8">
                 No hay pedidos todavía
               </p>
             ) : (
               orders.map((order) => (
                 <div
                   key={order.orderId}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                  className="border border-gray-800 bg-white text-black rounded-lg p-4 hover:shadow-lg transition-shadow"
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <p className="font-semibold text-gray-800">
+                      <p className="font-semibold text-black">
                         Pedido #{order.orderId}
                       </p>
                       {(order.customer?.name || order.customerName) && (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-800">
                           Cliente: {order.customer?.name || order.customerName}
                         </p>
                       )}
@@ -324,8 +448,8 @@ function AdminContent() {
                     </span>
                   </div>
                   <div className="mb-2">
-                    <p className="text-sm font-medium text-gray-700">Items:</p>
-                    <ul className="list-disc list-inside text-sm text-gray-600">
+                    <p className="text-sm font-medium text-black">Items:</p>
+                    <ul className="list-disc list-inside text-sm text-black">
                       {order.items.map((item, idx) => (
                         <li key={idx}>
                           {item.quantity}x {item.name}
@@ -334,7 +458,7 @@ function AdminContent() {
                     </ul>
                   </div>
                   {stageDisplay(order)}
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-800">
                     Creado: {new Date(order.createdAt).toLocaleString()}
                   </p>
                 </div>

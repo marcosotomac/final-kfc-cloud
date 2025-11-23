@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiService } from "@/services/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { Order, OrderItem, StageInfo } from "@/types";
+import { Order, OrderItem, Product, StageInfo } from "@/types";
 
 function CustomerContent() {
   const searchParams = useSearchParams();
@@ -13,11 +13,12 @@ function CustomerContent() {
 
   const [tenantId, setTenantId] = useState(defaultTenant);
   const [customerName, setCustomerName] = useState("");
-  const [items, setItems] = useState<OrderItem[]>([{ name: "", quantity: 1 }]);
+  const [items, setItems] = useState<OrderItem[]>([{ productId: "", name: "", quantity: 1 }]);
   const [order, setOrder] = useState<Order | null>(null);
   const [orderId, setOrderId] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const formatStatus = (status: string) => {
     if (status === "placed") return "Recibido";
@@ -66,7 +67,7 @@ function CustomerContent() {
   });
 
   const addItem = () => {
-    setItems([...items, { name: "", quantity: 1 }]);
+    setItems([...items, { productId: "", name: "", quantity: 1 }]);
   };
 
   const removeItem = (index: number) => {
@@ -79,7 +80,12 @@ function CustomerContent() {
     value: string | number
   ) => {
     const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    let patch: Partial<OrderItem> = { [field]: value } as Partial<OrderItem>;
+    if (field === "productId") {
+      const selected = products.find((p) => p.productId === value);
+      patch = { ...patch, name: selected?.name || "" };
+    }
+    newItems[index] = { ...newItems[index], ...patch };
     setItems(newItems);
   };
 
@@ -93,17 +99,21 @@ function CustomerContent() {
       setError("Nombre del cliente es requerido");
       return;
     }
-    const validItems = items.filter((i) => i.name.trim() && i.quantity > 0);
+    const validItems = items.filter((i) => i.productId && i.quantity > 0);
     if (!validItems.length) {
-      setError("Agrega al menos un item");
+      setError("Agrega al menos un item con producto y cantidad");
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError("");
     try {
       const created = await apiService.createOrder(tenantId, {
-        items: validItems,
+        items: validItems.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          name: i.name,
+        })),
         customerName,
       });
       setOrder(created);
@@ -111,7 +121,7 @@ function CustomerContent() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el pedido");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -121,6 +131,19 @@ function CustomerContent() {
       setTenantId(defaultTenant);
     }
   }, [defaultTenant, tenantId]);
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      if (!tenantId) return;
+      try {
+        const result = await apiService.listProducts(tenantId);
+        setProducts(result);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadProducts();
+  }, [tenantId]);
 
   const renderStage = (label: string, info?: StageInfo) => (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
@@ -205,14 +228,19 @@ function CustomerContent() {
               <div className="space-y-2">
                 {items.map((item, index) => (
                   <div key={index} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={item.name}
-                      onChange={(e) => updateItem(index, "name", e.target.value)}
-                      placeholder="Producto"
+                    <select
+                      value={item.productId || ""}
+                      onChange={(e) => updateItem(index, "productId", e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                       required
-                    />
+                    >
+                      <option value="">Seleccione producto</option>
+                      {products.map((p) => (
+                        <option key={p.productId} value={p.productId} disabled={p.stock <= 0}>
+                          {p.name} - ${p.price} ({p.stock} disp.)
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="number"
                       min="1"
@@ -234,15 +262,20 @@ function CustomerContent() {
                     )}
                   </div>
                 ))}
+                {products.length === 0 && (
+                  <p className="text-xs text-gray-500">
+                    No hay productos cargados. Pide al admin que registre productos.
+                  </p>
+                )}
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting || products.length === 0}
               className="w-full py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:bg-gray-400"
             >
-              {loading ? "Enviando..." : "Enviar Pedido"}
+              {submitting ? "Enviando..." : "Enviar Pedido"}
             </button>
           </form>
 
@@ -264,7 +297,7 @@ function CustomerContent() {
                   <ul className="list-disc list-inside text-sm text-gray-600">
                     {(order.items || []).map((item, idx) => (
                       <li key={idx}>
-                        {item.quantity}x {item.name}
+                        {item.quantity}x {item.name || item.productId}
                       </li>
                     ))}
                   </ul>

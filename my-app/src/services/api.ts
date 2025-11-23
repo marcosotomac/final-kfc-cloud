@@ -1,5 +1,5 @@
 import { API_CONFIG } from "@/config/api";
-import { Tenant, Order, OrderItem } from "@/types";
+import { Tenant, Order, OrderItem, Product, AuthResponse } from "@/types";
 
 const fetchAPI = async <T>(
   endpoint: string,
@@ -53,6 +53,25 @@ export const apiService = {
     });
   },
 
+  // Products
+  createProduct: async (
+    tenantId: string,
+    data: { name: string; price: number; stock: number; description?: string }
+  ): Promise<Product> => {
+    return fetchAPI<Product>(API_CONFIG.endpoints.createProduct(tenantId), {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  listProducts: async (tenantId: string): Promise<Product[]> => {
+    const result = await fetchAPI<{ items: Product[] }>(
+      API_CONFIG.endpoints.listProducts(tenantId),
+      { method: "GET" }
+    );
+    return result.items || [];
+  },
+
   listOrders: async (tenantId: string, status?: string): Promise<Order[]> => {
     const endpoint = status
       ? `${API_CONFIG.endpoints.listOrders(tenantId)}?status=${status}`
@@ -82,6 +101,29 @@ export const apiService = {
     return fetchAPI(API_CONFIG.endpoints.completeStage(tenantId, orderId, stage), {
       method: "POST",
       headers: userId ? { "x-user-id": userId } : {},
+    });
+  },
+
+  // Auth
+  registerUser: async (
+    tenantId: string,
+    data: { email: string; password: string; role?: string }
+  ): Promise<{ userId: string; email: string; role?: string }> => {
+    return fetchAPI(API_CONFIG.endpoints.registerUser(tenantId), {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  login: async (
+    tenantId: string,
+    data: { email: string; password: string },
+    secret?: string
+  ): Promise<AuthResponse> => {
+    return fetchAPI<AuthResponse>(API_CONFIG.endpoints.login(tenantId), {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: secret ? { "x-auth-secret": secret } : {},
     });
   },
 };
