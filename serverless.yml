@@ -377,7 +377,7 @@ resources:
       Type: AWS::StepFunctions::StateMachine
       Properties:
         StateMachineName: ${self:service}-workflow-${sls:stage}-${self:custom.nameSuffix}
-        RoleArn: arn:aws:iam::814612244228:role/LabRole
+        RoleArn: arn:aws:iam::595645243021:role/LabRole
         DefinitionString:
           Fn::Sub: |
             {
@@ -439,5 +439,5 @@ resources:
         Targets:
           - Arn: !GetAtt OrderWorkflow.Arn
             Id: StartOrderWorkflow
-            RoleArn: arn:aws:iam::814612244228:role/LabRole
+            RoleArn: arn:aws:iam::595645243021:role/LabRole
             InputPath: "$.detail"

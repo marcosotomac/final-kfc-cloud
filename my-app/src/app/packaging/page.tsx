@@ -49,7 +49,9 @@ function PackagingContent() {
       await apiService.completeStage(tenantId, orderId, "packaging");
       await loadOrders();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo completar el pedido");
+      setError(
+        err instanceof Error ? err.message : "No se pudo completar el pedido"
+      );
     } finally {
       setLoading(false);
     }
