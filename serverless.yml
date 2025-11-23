@@ -160,7 +160,7 @@ package:
 
 custom:
   # Sufijo opcional para evitar colisiones con stacks previos.
-  nameSuffix: ${opt:suffix, 'v3'}
+  nameSuffix: ${opt:suffix, 'v4'}
   tenantsTableName: ${self:service}-tenants-${sls:stage}-${self:custom.nameSuffix}
   ordersTableName: ${self:service}-orders-${sls:stage}-${self:custom.nameSuffix}
   connectionsTableName: ${self:service}-connections-${sls:stage}-${self:custom.nameSuffix}
