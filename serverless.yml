@@ -1,4 +1,4 @@
-org: marcosotomac
+org: mishaorganization
 service: kfc-orders-cloud
 
 provider:
@@ -59,7 +59,7 @@ provider:
           - ".amazonaws.com/"
           - ${self:provider.stage}
   iam:
-    role: arn:aws:iam::814612244228:role/LabRole
+    role: arn:aws:iam::595645243021:role/LabRole
 
 functions:
   registerTenant:
