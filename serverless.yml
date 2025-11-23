@@ -211,7 +211,9 @@ custom:
   connectionsTableName: ${self:service}-connections-${sls:stage}-${self:custom.nameSuffix}
   usersTableName: ${self:service}-users-${sls:stage}-${self:custom.nameSuffix}
   productsTableName: ${self:service}-products-${sls:stage}-${self:custom.nameSuffix}
-  mediaBucketName: ${self:service}-media-${sls:stage}-${self:custom.nameSuffix}
+  # Sufijo propio para el bucket (evita choques con buckets previos)
+  mediaBucketSuffix: ${param:bucketSuffix, 'r1'}
+  mediaBucketName: ${self:service}-media-${sls:stage}-${self:custom.nameSuffix}-${self:custom.mediaBucketSuffix}
   eventBusName: ${self:service}-bus-${sls:stage}-${self:custom.nameSuffix}
 
 resources:
