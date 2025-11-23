@@ -162,7 +162,8 @@ custom:
   ordersTableName: ${self:service}-orders-${sls:stage}
   connectionsTableName: ${self:service}-connections-${sls:stage}
   mediaBucketName: ${self:service}-media-${sls:stage}
-  eventBusName: ${self:service}-bus-${sls:stage}
+  # Añadimos sufijo para evitar colisiones con buses previos en la misma cuenta.
+  eventBusName: ${self:service}-bus-${sls:stage}-${opt:busSuffix, 'v2'}
 
 resources:
   Resources:
