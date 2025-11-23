@@ -152,6 +152,14 @@ functions:
           arn:
             Fn::GetAtt: [DeliveryQueue, Arn]
           batchSize: 1
+  completeStage:
+    handler: src/handlers/orders/complete_stage.handler
+    description: Marca una etapa del workflow como completada y responde a Step Functions.
+    timeout: 10
+    events:
+      - httpApi:
+          method: post
+          path: /tenants/{tenantId}/orders/{orderId}/stages/{stage}/complete
 
 package:
   patterns:

@@ -1,6 +1,6 @@
 import json
 
-from src.common.utils import get_table, now_iso, publish_event, response, sfn
+from src.common.utils import get_table, now_iso, publish_event, response
 
 
 def process_stage(event, stage_name: str, start_status: str, done_status: str):
@@ -44,6 +44,7 @@ def process_stage(event, stage_name: str, start_status: str, done_status: str):
                 "workflow.#stage.#stageStatus = :stageInProgress, "
                 "workflow.#stage.startedAt = if_not_exists(workflow.#stage.startedAt, :start), "
                 "workflow.#stage.actor = :actor, "
+                "workflow.#stage.taskToken = :token, "
                 "updatedAt = :now"
             ),
             ExpressionAttributeNames={
@@ -56,6 +57,7 @@ def process_stage(event, stage_name: str, start_status: str, done_status: str):
                 ":stageInProgress": "in_progress",
                 ":start": start_time,
                 ":actor": actor,
+                ":token": task_token,
                 ":now": start_time,
             },
         )
@@ -72,55 +74,13 @@ def process_stage(event, stage_name: str, start_status: str, done_status: str):
             },
         )
 
-        end_time = now_iso()
-        table.update_item(
-            Key={"tenantId": tenant_id, "orderId": order_id},
-            UpdateExpression=(
-                "SET #status = :orderStatus, "
-                "workflow.#stage.#stageStatus = :stageDone, "
-                "workflow.#stage.completedAt = :completed, "
-                "updatedAt = :now"
-            ),
-            ExpressionAttributeNames={
-                "#status": "status",
-                "#stage": stage_name,
-                "#stageStatus": "status",
-            },
-            ExpressionAttributeValues={
-                ":orderStatus": done_status,
-                ":stageDone": "completed",
-                ":completed": end_time,
-                ":now": end_time,
-            },
-        )
-
-        publish_event(
-            "order.stage.completed",
-            {
-                "tenantId": tenant_id,
-                "orderId": order_id,
-                "stage": stage_name,
-                "status": done_status,
-                "completedAt": end_time,
-                "actor": actor,
-            },
-        )
-
-        sfn.send_task_success(
-            taskToken=task_token,
-            output=json.dumps(
-                {
-                    "tenantId": tenant_id,
-                    "orderId": order_id,
-                    "stage": stage_name,
-                    "status": done_status,
-                    "completedAt": end_time,
-                }
-            ),
-        )
-
         processed.append(
-            {"orderId": order_id, "tenantId": tenant_id, "status": "ok"}
+            {
+                "orderId": order_id,
+                "tenantId": tenant_id,
+                "status": "in_progress",
+                "stage": stage_name,
+            }
         )
 
     return response(200, {"processed": processed})
