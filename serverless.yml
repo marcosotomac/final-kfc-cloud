@@ -5,10 +5,11 @@ provider:
   name: aws
   stage: ${opt:stage, 'dev'}
   region: us-east-1
+  stackName: ${self:service}-${sls:stage}-${self:custom.nameSuffix}
   runtime: python3.11
   memorySize: 1024
   timeout: 30
-  websocketsApiName: ${self:service}-ws-${sls:stage}
+  websocketsApiName: ${self:service}-ws-${sls:stage}-${self:custom.nameSuffix}
   websocketsApiRouteSelectionExpression: $request.body.action
   httpApi:
     cors:
@@ -158,12 +159,13 @@ package:
     - "!*.pdf"
 
 custom:
-  tenantsTableName: ${self:service}-tenants-${sls:stage}
-  ordersTableName: ${self:service}-orders-${sls:stage}
-  connectionsTableName: ${self:service}-connections-${sls:stage}
-  mediaBucketName: ${self:service}-media-${sls:stage}
-  # Añadimos sufijo para evitar colisiones con buses previos en la misma cuenta.
-  eventBusName: ${self:service}-bus-${sls:stage}-${opt:busSuffix, 'v2'}
+  # Sufijo opcional para evitar colisiones con stacks previos.
+  nameSuffix: ${opt:suffix, 'v3'}
+  tenantsTableName: ${self:service}-tenants-${sls:stage}-${self:custom.nameSuffix}
+  ordersTableName: ${self:service}-orders-${sls:stage}-${self:custom.nameSuffix}
+  connectionsTableName: ${self:service}-connections-${sls:stage}-${self:custom.nameSuffix}
+  mediaBucketName: ${self:service}-media-${sls:stage}-${self:custom.nameSuffix}
+  eventBusName: ${self:service}-bus-${sls:stage}-${self:custom.nameSuffix}
 
 resources:
   Resources:
@@ -265,28 +267,28 @@ resources:
     OrderNotificationsTopic:
       Type: AWS::SNS::Topic
       Properties:
-        TopicName: ${self:service}-notifications-${sls:stage}
+        TopicName: ${self:service}-notifications-${sls:stage}-${self:custom.nameSuffix}
 
     KitchenQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:service}-kitchen-${sls:stage}
+        QueueName: ${self:service}-kitchen-${sls:stage}-${self:custom.nameSuffix}
         VisibilityTimeout: 120
     PackagingQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:service}-packaging-${sls:stage}
+        QueueName: ${self:service}-packaging-${sls:stage}-${self:custom.nameSuffix}
         VisibilityTimeout: 120
     DeliveryQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:service}-delivery-${sls:stage}
+        QueueName: ${self:service}-delivery-${sls:stage}-${self:custom.nameSuffix}
         VisibilityTimeout: 120
 
     OrderWorkflow:
       Type: AWS::StepFunctions::StateMachine
       Properties:
-        StateMachineName: ${self:service}-workflow-${sls:stage}
+        StateMachineName: ${self:service}-workflow-${sls:stage}-${self:custom.nameSuffix}
         RoleArn: arn:aws:iam::814612244228:role/LabRole
         DefinitionString:
           Fn::Sub: |
@@ -341,7 +343,7 @@ resources:
     StartWorkflowRule:
       Type: AWS::Events::Rule
       Properties:
-        Name: ${self:service}-start-workflow-${sls:stage}
+        Name: ${self:service}-start-workflow-${sls:stage}-${self:custom.nameSuffix}
         EventBusName: !Ref OrdersEventBus
         EventPattern:
           detail-type:
