@@ -174,8 +174,9 @@
 ## 🔄 Flujo de Trabajo Completo
 
 ### 1️⃣ Registro de Tenant (Franquicia)
+
 ```
-Usuario (Frontend) 
+Usuario (Frontend)
     │
     └──► POST /tenants
          │
@@ -187,6 +188,7 @@ Usuario (Frontend)
 ```
 
 ### 2️⃣ Creación de Orden
+
 ```
 Admin (Frontend)
     │
@@ -214,6 +216,7 @@ Admin (Frontend)
 ```
 
 ### 3️⃣ Workflow de Procesamiento (Step Functions)
+
 ```
 OrderWorkflow (Step Functions)
     │
@@ -252,6 +255,7 @@ OrderWorkflow (Step Functions)
 ```
 
 ### 4️⃣ Conexión WebSocket en Tiempo Real
+
 ```
 Worker (Frontend)
     │
@@ -279,6 +283,7 @@ orderEventsRouter (al recibir eventos)
 ## 📊 Estadísticas de Recursos
 
 ### Lambda Functions: **12**
+
 - registerTenant
 - createOrder, listOrders, getOrder
 - orderEventsRouter
@@ -286,16 +291,19 @@ orderEventsRouter (al recibir eventos)
 - kitchenWorker, packagingWorker, deliveryWorker
 
 ### DynamoDB Tables: **3**
+
 - TenantsTable
 - OrdersTable (+ 1 GSI)
 - ConnectionsTable (+ 2 GSIs)
 
 ### SQS Queues: **3**
+
 - KitchenQueue
 - PackagingQueue
 - DeliveryQueue
 
 ### Otros Recursos:
+
 - **1** Step Functions State Machine
 - **1** EventBridge Event Bus
 - **1** SNS Topic
@@ -308,14 +316,23 @@ orderEventsRouter (al recibir eventos)
 ## 🔐 Configuración de Seguridad
 
 ### CORS (HTTP API)
+
 ```yaml
 allowedOrigins: ["*"]
-allowedHeaders: [Content-Type, Authorization, X-Requested-With, 
-                 x-tenant-id, x-user-id, x-role]
+allowedHeaders:
+  [
+    Content-Type,
+    Authorization,
+    X-Requested-With,
+    x-tenant-id,
+    x-user-id,
+    x-role,
+  ]
 allowedMethods: [OPTIONS, GET, POST, PATCH, PUT, DELETE]
 ```
 
 ### TTL en Conexiones
+
 - Las conexiones WebSocket expiran después de 3600 segundos (1 hora)
 - Renovables mediante acción `ping`
 
@@ -324,6 +341,7 @@ allowedMethods: [OPTIONS, GET, POST, PATCH, PUT, DELETE]
 ## 🌐 Endpoints de Producción
 
 ### HTTP API
+
 ```
 Base URL: https://2afuwya2yc.execute-api.us-east-1.amazonaws.com
 
@@ -334,6 +352,7 @@ GET    /tenants/{tenantId}/orders/{orderId}
 ```
 
 ### WebSocket API
+
 ```
 WSS URL: wss://hmvtmrvzu4.execute-api.us-east-1.amazonaws.com/dev
 
@@ -349,16 +368,19 @@ Actions:
 ## 🚀 Escalabilidad y Rendimiento
 
 ### Auto-scaling
+
 - ✅ Lambda: Escalado automático (hasta 1000 instancias concurrentes)
 - ✅ DynamoDB: PAY_PER_REQUEST (escalado bajo demanda)
 - ✅ API Gateway: Sin límite de requests configurado
 
 ### Timeouts
+
 - Lambda Functions: 10-30 segundos
 - SQS Visibility Timeout: 120 segundos
 - WebSocket Connection TTL: 3600 segundos
 
 ### Límites de Memoria
+
 - Lambda Functions: 1024 MB
 
 ---
@@ -366,6 +388,7 @@ Actions:
 ## 📈 Monitoreo y Logs
 
 ### CloudWatch
+
 - Logs de todas las Lambda functions
 - Métricas de Step Functions
 - Alarmas de SQS (DLQ)
@@ -402,6 +425,7 @@ serverless remove
 ## 🔍 Tecnologías Utilizadas
 
 **Backend:**
+
 - AWS Lambda (Python 3.11)
 - AWS Step Functions
 - Amazon DynamoDB
@@ -412,12 +436,14 @@ serverless remove
 - Amazon S3
 
 **Frontend:**
+
 - Next.js 16
 - React 19
 - TypeScript
 - Tailwind CSS
 
 **IaC:**
+
 - Serverless Framework 4.25.0
 
 ---
